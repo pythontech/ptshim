@@ -110,9 +110,12 @@ ptshim_redirect(const char *sLibName, /* sFuncName, ppfFunc */...)
     /*--- Open library but do not merge with global namespace */
     void *pDl = dlopen(sLibraryFilename,
 #if 1
-		       RTLD_LAZY | RTLD_GLOBAL | RTLD_PARENT
+		       RTLD_LAZY | RTLD_GLOBAL
 #else
-		       RTLD_LAZY | RTLD_LOCAL | RTLD_PARENT
+		       RTLD_LAZY | RTLD_LOCAL
+#endif
+#if __sun__
+                       | RTLD_PARENT
 #endif
 		       );
     fprintf(pLog, "--+ dlopen(\"%s\")\n", sLibraryFilename);
