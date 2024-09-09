@@ -12,6 +12,13 @@ typedef struct S_Ptshim *Ptshim;
 Ptshim
 ptshim_redirect(const char *sLibName, /* sFuncName, ppfFunc */...);
 
+/*--- Get handle to library */
+Ptshim
+ptshim_library(const char *sLibName);
+
+/*--- Get a function */
+void *
+ptshim_function(Ptshim shim, const char *sFuncName);
 
 /*--- Start function call - push arguments */
 void

@@ -11,7 +11,11 @@
 #include <sys/stat.h>
 #include <dlfcn.h>
 
+#if __sun__
 #define STRDUP(s) strcpy(malloc(strlen(s)+1),s)
+#else
+#define STRDUP(s) strdup(s)
+#endif
 
 #define PTSHIM_DEFAULT_FD 9
 
@@ -20,7 +24,6 @@
  *-----------------------------------------------------------------------*/
 struct S_Ptshim {
   char *sLibName;
-  char *sLibraryFilename;
   void *pDl;				/* handle returned by dlopen */
 };
 
@@ -59,10 +62,12 @@ _ptshim_init(void)
     }
 
     sLibraryPath = getenv("LD_LIBRARY_PATH");
+#if PTSHIM_REQUIRE_PATH
     if (sLibraryPath == NULL) {
       fprintf(stderr, "ptshim: LD_LIBRARY_PATH not set\n");
       abort();
     }
+#endif
   }
 }
 
@@ -71,87 +76,62 @@ Ptshim
 ptshim_redirect(const char *sLibName, /* sFuncName, ppfFunc */...)
 {
   Ptshim pSelf = NULL;
-  int nFound;
-  char *sDir, *sLasts;
-  char acFilename[1024];
-  char *sLibraryFilename = NULL;
-  char *sPathCopy;
 
   if (pLog == NULL) _ptshim_init();
 
-  /*--- Take a copy for strtok chopping */
-  sPathCopy = STRDUP(sLibraryPath);
+  pSelf = ptshim_library(sLibName);
+  fprintf(pLog, "--+ dlopen(\"%s\")\n", sLibName);
+  fflush(pLog);
 
-  for (sDir = strtok_r(sPathCopy, ":", &sLasts), nFound = 0;
-       sDir && nFound < 2;
-       sDir = strtok_r(NULL, ":", &sLasts)) {
-    if (sDir[0] != '\0') {		/* Ignore xyz::abc */
-      struct stat qStat;
-
-      sprintf(acFilename, "%s/%s", sDir, sLibName);
-      if (stat(acFilename, &qStat) == 0) {
-	/*--- FIXME: check permissions? */
-	++nFound;
-	if (nFound == 2) {
-	  sLibraryFilename = STRDUP(acFilename);
-	}
-      }
-    }
-  }
-  if (nFound == 0) {
-    fprintf(stderr, "%s not found in LD_LIBRARY_PATH\n",
-	    sLibName);
-    abort();
-  } else if (nFound == 1) {
-    fprintf(stderr, "Only one %s found in LD_LIBRARY_PATH\n",
-	    sLibName);
-    abort();
-  } else {
-    /*--- Open library but do not merge with global namespace */
-    void *pDl = dlopen(sLibraryFilename,
-#if 1
-		       RTLD_LAZY | RTLD_GLOBAL
-#else
-		       RTLD_LAZY | RTLD_LOCAL
-#endif
-#if __sun__
-                       | RTLD_PARENT
-#endif
-		       );
-    fprintf(pLog, "--+ dlopen(\"%s\")\n", sLibraryFilename);
-    fflush(pLog);
-    if (pDl == NULL) {
-      fprintf(stderr, "Unable to dlopen %s: %s\n",
-	      sLibraryFilename, dlerror());
-      abort();
-    } else {
+  {
       /*--- Look up functions */
       va_list ap;
       const char *sFuncName;
       va_start(ap, sLibName);
       while ((sFuncName = va_arg(ap, const char *)) != NULL) {
-	void **ppFunc = va_arg(ap, void **);
-	void *pFunc = dlsym(pDl, sFuncName);
-	if (pFunc == NULL) {
-	  fprintf(stderr, "Could not find symbol %s in %s",
-		  sFuncName, sLibraryFilename);
-	  abort();
-	} else {
-	  /*--- Return function pointer to caller */
-	  *ppFunc = pFunc;
-	}
+          void **ppFunc = va_arg(ap, void **);
+          void *pFunc = ptshim_function(pSelf, sFuncName);
+          /*--- Return function pointer to caller */
+          *ppFunc = pFunc;
       }
-
-      pSelf = (Ptshim)malloc(sizeof(*pSelf));
-      pSelf->sLibName = STRDUP(sLibName);
-      pSelf->sLibraryFilename = sLibraryFilename;
-      pSelf->pDl = pDl;
-    }
   }
-  free(sPathCopy);
   return pSelf;
 }
 
+Ptshim
+ptshim_library(const char *sLibName)
+{
+    Ptshim pShim;
+    void *pDl = dlopen(sLibName,
+                       RTLD_LAZY | RTLD_GLOBAL
+#if __sun__
+                       | RTLD_PARENT
+#endif
+                       );
+    if (pDl == NULL) {
+        fprintf(stderr, "Unable to dlopen %s: %s\n",
+                sLibName, dlerror());
+        abort();
+    }
+
+    pShim = (Ptshim)malloc(sizeof(*pShim));
+    pShim->sLibName = STRDUP(sLibName);
+    pShim->pDl = pDl;
+
+    return pShim;
+}
+
+void *
+ptshim_function(Ptshim pSelf, const char *sFuncName)
+{
+    void *pFunc = dlsym(pSelf->pDl, sFuncName);
+    if (pFunc == NULL) {
+        fprintf(stderr, "Could not find symbol %s in %s",
+                sFuncName, pSelf->sLibName);
+        abort();
+    }
+    return pFunc;
+}
 
 /*--- Start function call - push arguments */
 void
