@@ -3,25 +3,28 @@
 #include <sys/socket.h>
 #include <sys/errno.h>
 
-static struct {
-    Ptshim shim;
-    int (*p_socket)(int domain, int type, int protocol);
-    int (*p_connect)(int, const struct sockaddr *, socklen_t);
-} _data = {0};
+static Ptshim socket_shim;
+#define PTSHIM_LIBRARY socket_shim
 
-static void _init(void);
-#define INIT() do {if (! _data.shim) _init();} while (0);
+static void netlog_init(void)
+{
+    socket_shim = ptshim_library("libc.so.6");
+}
 
+#define INIT() do {if (! socket_shim) netlog_init();} while (0);
+
+PTSHIM_INTERCEPT(int, socket, (int, int, int));
 int
 socket(int domain, int type, int protocol)
 {
     INIT();
+    PTSHIM_FINDFUNC(socket);
     ptlog_inputs("socket");
     ptlog_int("domain", domain);
     ptlog_int("type", type);
     ptlog_int("protocol", protocol);
     ptlog_call();
-    int ret = _data.p_socket(domain, type, protocol);
+    int ret = PTSHIM_REALFUNC(socket)(domain, type, protocol);
     int save_errno = errno;
     ptlog_outputs();
     ptlog_done();
@@ -29,30 +32,26 @@ socket(int domain, int type, int protocol)
     return ret;
 }
 
+PTSHIM_INTERCEPT(int, connect, (int, const struct sockaddr *, socklen_t));
 int
 connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
     INIT();
+    PTSHIM_FINDFUNC(connect);
     ptlog_inputs("connect");
     ptlog_int("sockfd", sockfd);
     ptlog_binary("addr", "sockaddr", addr, addrlen);
     //ptlog_int("addrlen", (int)addrlen);
     ptlog_call();
-    int ret = _data.p_connect(sockfd, addr, addrlen);
+    int ret = PTSHIM_REALFUNC(connect)(sockfd, addr, addrlen);
     int save_errno = errno;
     ptlog_outputs();
-    ptlog_int("ret", ret);
-    if (ret < 0) ptlog_int("errno", save_errno);
+    if (ret < 0) {
+        ptlog_int("errno", save_errno);
+    } else {
+        ptlog_int("ret", ret);
+    }
     ptlog_done();
     errno = save_errno;
     return ret;
-}
-
-static void
-_init(void)
-{
-    _data.shim = ptshim_redirect("libc.so.6",
-                                 "socket", &_data.p_socket,
-                                 "connect", &_data.p_connect,
-                                 NULL);
 }
