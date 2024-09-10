@@ -26,6 +26,7 @@ void ptlog_binaryn(const char */*name*/, const char */*type*/,
 #define ptlog_binary4(_n,_t,_p,_l) ptlog_binaryn(_n,_t,_p,_l,4)
 void ptlog_ptr(const char */*name*/, const void */*ptr*/);
 void ptlog_voidfunc(const char */*name*/, void (*/*func*/)(void));
+void ptlog_item(const char */*name*/, const char */*typedesc*/, const char */*repr*/);
 void ptlog_comment(const char *sFmt, ...);
 
 #endif /* INC_ptlog_h */

@@ -7,6 +7,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <linux/limits.h>
 
 #define PTLOG_DEFAULT_FD 9
 
@@ -18,6 +19,8 @@ static struct {
     .nesting = 0,
 };
 
+static void expand_namespec(const char *, char *, size_t);
+
 /* Initialise */
 void
 ptlog_init(void)
@@ -25,8 +28,10 @@ ptlog_init(void)
     if (ptlog.log != NULL) {           /* Already set up */
         ;
     } else {
-        const char *log_name = getenv("PTLOG_FILE");
-        if (log_name != NULL) {
+        const char *log_spec = getenv("PTLOG_FILE");
+        if (log_spec != NULL) {
+            char log_name[PATH_MAX];
+            expand_namespec(log_spec, log_name, sizeof(log_name));
             ptlog.log = fopen(log_name, "a");
             if (ptlog.log == NULL) {
                 fprintf(stderr, "ptlog: Cannot open PTLOG_FILE %s for append: %s\n",
@@ -170,6 +175,12 @@ ptlog_voidfunc(const char *name, void (*pfFunc)(void))
 }
 
 void
+ptlog_item(const char *name, const char *typedesc, const char *repr)
+{
+    fprintf(ptlog.log, " %s=%s:%s", name, typedesc, repr);
+}
+
+void
 ptlog_comment(const char *fmt, ...)
 {
     va_list ap;
@@ -180,3 +191,51 @@ ptlog_comment(const char *fmt, ...)
     fprintf(ptlog.log, "\n");
     va_end(ap);
 }
+
+static void expand_namespec(const char *spec, char *name, size_t name_len)
+{
+    pid_t pid = getpid();
+    const char *s = spec;
+    char *n = name, *end = name + name_len, c;
+    while (n < end && (c = (*s++)) != '\0') {
+        if (c == '%') {
+            if ((c = *s++) == '%') {
+                *n++ = '%';
+            } else if (c == 'p') {     /* insert pid */
+                n += snprintf(n, end-n, "%u", pid);
+            } else if (c == 'n') {     /* Insert command name */
+                char comm[40];
+                FILE *f;
+                size_t nread;
+                sprintf(comm, "/proc/%u/comm", pid);
+                if ((f = fopen(comm, "r")) == NULL) {
+                    fprintf(stderr, "ptlog: Cannot open %s: %s\n",
+                            comm, strerror(errno));
+                    abort();
+                }
+                nread = fread(n, 1, end-n, f);
+                if (nread == 0) {
+                    fprintf(stderr, "ptlog: Error reading %s: %s\n",
+                            comm, strerror(errno));
+                    abort();
+                }
+                if (n[nread-1] == '\n') --nread; /* Chomp final newline */
+                fclose(f);
+                n += nread;
+            } else {
+                fprintf(stderr, "ptlog: Unknown insertion %%%c in PTLOG_FILE\n",
+                        c);
+                abort();
+            }
+        } else {
+            /* Not '%' - just copy */
+            *n++ = c;
+        }
+    }
+    if (n >= end) {
+        fprintf(stderr, "ptlog: Expansion of PTLOG_FILE too long\n");
+        abort();
+    }
+    *n = '\0';
+}
+
