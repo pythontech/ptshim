@@ -1,7 +1,7 @@
 all:	libptsocket.so
 
-libptsocket.so:	socket.o ptshim.o
-	$(CC) -shared -o $@ $< ptshim.o
+libptsocket.so:	socket.o ptshim.o ptlog.o
+	$(CC) -g -shared -o $@ $< ptshim.o ptlog.o
 
 %.o:	%.c
-	$(CC) -c -fpic -Wall -o $@ $<
+	$(CC) -g -c -fpic -Wall -o $@ $<

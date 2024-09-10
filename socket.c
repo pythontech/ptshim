@@ -1,4 +1,5 @@
 #include "ptshim.h"
+#include "ptlog.h"
 #include <sys/socket.h>
 #include <sys/errno.h>
 
@@ -15,15 +16,15 @@ int
 socket(int domain, int type, int protocol)
 {
     INIT();
-    ptshim_inputs("socket");
-    ptshim_int("domain", domain);
-    ptshim_int("type", type);
-    ptshim_int("protocol", protocol);
-    ptshim_call();
+    ptlog_inputs("socket");
+    ptlog_int("domain", domain);
+    ptlog_int("type", type);
+    ptlog_int("protocol", protocol);
+    ptlog_call();
     int ret = _data.p_socket(domain, type, protocol);
     int save_errno = errno;
-    ptshim_outputs();
-    ptshim_done();
+    ptlog_outputs();
+    ptlog_done();
     errno = save_errno;
     return ret;
 }
@@ -32,17 +33,17 @@ int
 connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
     INIT();
-    ptshim_inputs("connect");
-    ptshim_int("sockfd", sockfd);
-    ptshim_binary("addr", "sockaddr", addr, addrlen);
-    //ptshim_int("addrlen", (int)addrlen);
-    ptshim_call();
+    ptlog_inputs("connect");
+    ptlog_int("sockfd", sockfd);
+    ptlog_binary("addr", "sockaddr", addr, addrlen);
+    //ptlog_int("addrlen", (int)addrlen);
+    ptlog_call();
     int ret = _data.p_connect(sockfd, addr, addrlen);
     int save_errno = errno;
-    ptshim_outputs();
-    ptshim_int("ret", ret);
-    if (ret < 0) ptshim_int("errno", save_errno);
-    ptshim_done();
+    ptlog_outputs();
+    ptlog_int("ret", ret);
+    if (ret < 0) ptlog_int("errno", save_errno);
+    ptlog_done();
     errno = save_errno;
     return ret;
 }
